@@ -34,8 +34,7 @@ class Stat
 
     def self.decrement(user, library_entry)
       record = user.stats.find_by(type: 'Stat::AnimeAmountWatched')
-      # TODO: do we want to raise or return?
-      raise "Stat doesn't exist" unless record
+      return unless record
       record.decrement(library_entry)
     end
 
@@ -49,10 +48,12 @@ class Stat
     end
 
     def default_stats
+      # needs to be a string and NOT a symbol
+      # due to how it is being saved.
       stats_data['all_time'] = {
-        total_anime: 0,
-        total_episodes: 0,
-        total_time: 0
+        'total_anime' => 0,
+        'total_episodes' => 0,
+        'total_time' => 0
       }
 
       self

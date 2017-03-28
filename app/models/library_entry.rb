@@ -195,18 +195,31 @@ class LibraryEntry < ApplicationRecord
 
   after_commit(on: :create) do
     sync_entry(:create) # mal exporter
-    # Stat STI
-    Stat::AnimeGenreBreakdown.increment(user, media.genres)
   end
 
   after_commit(on: :update) do
     sync_entry(:update) # mal exporter
   end
 
+  after_create do
+    # Stat STI
+    case media_type
+    when 'Anime'
+      Stat::AnimeGenreBreakdown.increment(user, media.genres)
+      Stat::AnimeAmountWatched.increment(user, self)
+    when 'Manga'
+    end
+  end
+
   after_destroy do
     sync_entry(:delete) # mal exporter
     # Stat STI
-    Stat::AnimeGenreBreakdown.decrement(user, media.genres)
+    case media_type
+    when 'Anime'
+      Stat::AnimeGenreBreakdown.decrement(user, media.genres)
+      Stat::AnimeAmountWatched.decrement(user, self)
+    when 'Manga'
+    end
   end
 
   def sync_to_mal?
