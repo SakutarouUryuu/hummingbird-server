@@ -5,14 +5,15 @@
 # inefficient.  Instead, we go through the MediaIndex and filter in the IDs in
 # the user's library, then find the library entries for the result set.
 class LibrarySearchService
-  attr_reader :user, :queries
+  attr_reader :user, :queries, :filters
   attr_accessor :includes
 
   # @param [User] user The user whose library we want to search in
   # @param [Hash<String, String>]
-  def initialize(user, queries)
-    @user = user
+  def initialize(queries, filters)
     @queries = queries
+    @filters = filters
+    @user = User.find(filters[:user_id])
   end
 
   # Runs the search and returns the list of matching library entries in order by
@@ -53,11 +54,12 @@ class LibrarySearchService
       entries = LibraryEntry.by_kind(kind).where("#{kind}_id" => ids)
                             .includes(includes)
       # Add them to our output hash
-      out[kind] = entries.group_by(&:"#{kind}_id")
+      out[kind] = entries.group_by(&:"#{kind}_id").map(&:first)
     end
   end
 
-  # Apply the library entry filter and the media query
+  # Apply the library entry filter, the media query, and apply includes and
+  # orders
   #
   # @return [MediaIndex] the index filtered
   def result_media
@@ -91,8 +93,8 @@ class LibrarySearchService
     }
   end
 
-  # Generates a `bool` query that `should` match all media in the user's
-  # library.  Should be applied as a `filter` on the Chewy scope
+  # Generates a `bool` query that `should` match all media in the filtered
+  # library entries.  Should be applied as a `filter` on the Chewy scope
   #
   # @return [Hash] the ElasticSearch query object
   def library_entry_filter
@@ -102,12 +104,22 @@ class LibrarySearchService
     { bool: { should: id_filters } }
   end
 
-  # Returns the IDs of all media in the user's library
+  # Returns the IDs of all media that match the filters provided
   #
   # @return [Hash<String, Array<Integer>>] media ids by type
   def library_media_ids
     %i[anime manga drama].map do |kind|
-      [kind, user.library_entries.by_kind(kind).ids]
+      [kind, filtered_library_entries.by_kind(kind).pluck("#{kind}_id")]
     end
+  end
+
+  # Applies the filters for the LibraryEntry and returns the resulting scope.
+  # Also applies a limit of 20,000 to prevent retrieving all library entries in
+  # existence.
+  #
+  # @return [ActiveRecord::Relation<LibraryEntry>] the resulting scope
+  def filtered_library_entries
+    @entries ||= filters.reduce(LibraryEntry) { |acc, elem| acc.where(elem) }
+                        .limit(20_000)
   end
 end
